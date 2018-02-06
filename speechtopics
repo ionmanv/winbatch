@@ -1,0 +1,291 @@
+; ***************************************************************************
+; *
+; *	Speach Topics
+; *
+; ***************************************************************************
+
+;variables
+htmlfiles="an array of htm file names"
+htmcount= 0 ;the number of file names in the directory
+count = 1 ;counter for the array position when looping through 'htmfiles'
+row = 1 ; the row number to be used in the excel sheet, held outside the topics loop
+line = 0 ;the row number to be used in the excel sheet, held inside the topics loop
+tcount = 1 ; counter for how many times the topic while statement was run
+filename = "the name of a file"
+filecase = 0 ;variable to triggers alternate case statments
+data = "the content of a file"
+name = "the name of the speaker"
+topictitle = "the topic title"
+emphasis = "the title emphasis"
+topic = "the topics copy(content)"
+pcount = 1
+
+wildcard = "used to hold wildcard patern for StrSubWild function"
+start = "used to hold wildcard start position for StrIndexWild function"  ;start with a numeral after it (start1) has the same purpose for variations of the wildcard in the same start position
+startII = 1 ;version of start to be initialized
+result = "the result of StrSubWild function"
+
+WorkingDir = AskDirectory("Which Directory Would You Like To Scan", "", "", "",0)  ;pick your directory popup box
+dirchange(WorkingDir)  ;change directory to variable
+
+htmfiles = FileItemize("*.htm");adds all '.htm' file names in dir to an array
+htmcount = ItemCount(htmfiles, @TAB);adds number of file names in variable to a new variable
+
+objXL = ObjectCreate("Excel.Application")
+objXL.Visible = @TRUE
+
+Workbooks=objXL.WorkBooks
+Workbooks.Add
+
+;Name Column Headers in Spreadsheet
+Cells1=objXL.Cells(1, 1)
+Cells1.Value="File Name"
+Cells1=objXL.Cells(1, 2)
+Cells1.Value="Speaker Name"
+Cells1=objXL.Cells(1, 3)
+Cells1.Value="Title"
+Cells1=objXL.Cells(1, 4)
+Cells1.Value="Topic Title"
+Cells1=objXL.Cells(1, 5)
+Cells1.Value="Title Emphasis"
+Cells1=objXL.Cells(1, 6)
+Cells1.Value="Topic"
+Cells1=objXL.Cells(1, 7)
+Cells1.Value="Reference"
+
+while  count <= htmcount ; this loops through files in the directory folder
+
+	filename=ItemExtract(count,htmfiles,@tab);exctracts file name from htmfiles array based on count as array position and place name in new variable
+	tcount=1
+	filecase = 1
+	data=FileGet(filename,"");places file content in a string
+
+	;Establish the page generation of a file to best handle search and pulls Speaker Name from the file
+	strcount = StrCnt(data, '<h3 class="program_title">', 1, -1, 0) ;Counts the number of ocurences of the phrase
+		If strcount > 0
+			filecase	= 1
+			showncase = 1
+		EndIf 
+	wildcard = '<h1 id="speaker-name">*</h1>'
+	start = StrIndexWild( data, wildcard, 1 )
+	result = StrSubWild( data, wildcard, start )
+	name = StrReplace(StrReplace(result,'<h1 id="speaker-name">',''),'</h1>','')
+	wildcard = '<h3 class="program_title">*</h3>'
+	start = StrIndexWild( data, wildcard, 1 )
+
+	;place start position after Video
+	vexist = StrIndexWild( data, '<p class="biography_subHeader">Video Preview</p>', 1 )
+	texist = StrIndexWild( data, '<p class="biography_subHeader">Testimonials</p>', 1 )
+	;message("test","%texist%")
+
+	If vexist > 0 && texist > 0
+		wildcard = '<p class="biography_subHeader">Video Preview</p>*<p class="biography_subHeader">Testimonials</p>'
+		start = StrIndexWild( data, wildcard, 1 )
+		data = StrReplace(StrReplace(StrSubWild( data, wildcard, start ),'<p class="biography_subHeader">Testimonials</p>',''),'<p class="biography_subHeader">Video Preview</p>','')
+		;Message("Test 2",strcat(data))
+		vexist = 1
+	elseif vexist > 0
+	vexist = vexist+1
+	;message("test","%texist%")
+	endif
+	
+	if texist > 0 && vexist < 0
+	 	wildcard = '<h1 id="speaker-name">*<p class="biography_subHeader">Testimonials</p>'
+		start = StrIndexWild( data, wildcard, 1 )
+		result = StrSubWild( data, wildcard, start )
+		result = StrReplace(result,'<p class="biography_subHeader">Testimonials</p>','')
+		vexist = 1
+		;Message("Test 1",strcat(data))
+	endif
+
+	;Establish the Version Of the Htm file to best find topics
+	If strcount == 0
+	strcount = StrCnt(data, '<p><span class="program_title">', vexist, -1, 0)
+	;message("test",'<p><span class="program_title"> %strcount%')
+		If strcount > 0
+			filecase	= 2
+			showncase = 2
+		EndIf
+	EndIf
+
+	If strcount == 0
+	strcount = StrCnt(data, '<p class="biography_subHeader">', vexist, -1, 0)
+	;message("test",'<p class="biography_subHeader"> %strcount%')
+		If strcount == 1
+			wildcard = '<p class="biography_subHeader">*</ul>'
+			pstart = StrIndexWild( data, wildcard, vexist)
+			result = StrSubWild( data, wildcard, pstart )
+			pcount = StrCnt(result, '<p>', 1, -1, 0)
+			If pcount < 1
+			strcount = StrCnt(data, '<li>', vexist, -1, 0)
+			EndIf
+		EndIf
+		If strcount > 0
+			filecase	= 2
+			showncase = 3
+		EndIf
+	EndIf
+
+	line=row
+	;Message("File","<<<<    %filename%    >>>>%@crlf%%@crlf%<--  %line%  -->")
+
+	;Message("Topic","%tcount% <= %strcount% && %tcount% != 0 && %filecase% != 0")
+	while  tcount <= strcount && tcount != 0 && filecase != 0 ; this loop grabs individual topics from the file
+	
+		line=line+1
+
+		Switch filecase
+			Case 1
+				;Message("Topic","Case 1")
+				;grabs the topic title from the file
+				wildcard = '<h3 class="program_title">*</h3>'
+				start = StrIndexWild( data, wildcard, start )
+				result = StrSubWild( data, wildcard, start )
+				topictitle = StrReplace(StrReplace(StrReplace(result,'<h3 class="program_title">',''),'</h3>',''),'"','""')
+			
+				;grabs the emphasis from the topic title and removes it from said title
+				wildcard = '<em>*</em>'
+				emstart = StrIndexWild( result, wildcard, 1 )
+				result = StrSubWild( result, wildcard, emstart )
+				topictitle = StrReplace(StrReplace( topictitle, result, "" ),":","")
+				emphasis =StrReplace(StrReplace(StrReplace(result,'<em>',''),'</em>',''),'"','""')
+		
+				;grabs the topics copy
+				wildcard = '<p>*<p>-----</p>'
+				start2 = StrIndexWild( data, wildcard, start )
+				result = StrSubWild( data, wildcard, start2 )
+				topic = result
+				If result == ""
+					wildcard = '<p>*<!-- InstanceEndEditable -->'
+					start3 = StrIndexWild( data, wildcard, start )
+					result = StrSubWild( data, wildcard, start3 )
+				Endif
+				If result == ""
+					wildcard = '<p>*</div>'
+					start4 = StrIndexWild( data, wildcard, start )
+					result = StrSubWild( data, wildcard, start4 )
+				Endif
+				topic = StrReplace(StrReplace(StrReplace(StrReplace(StrReplace(StrCat(result),'"','""'),"<p>-----</p>",""),"<p>Paragraph goes here</p>-->",""),"<!-- InstanceEndEditable -->",""),"</div>","")
+				;Message("Case","Case 1 %@crlf% %topictitle%")
+				break
+		  Case 2
+		  		;Message("Topic","Case 2")
+		  		;grabs the topic title from the file
+				wildcard = '<p><strong class="program_title">*</strong>'
+				startcase1 = StrIndexWild( data, wildcard, start )
+				;Message("case",'%start% --- Case 1 %startcase1%')
+				wildcard = '<p><span class="program_title">*</span>'
+				startcase2 = StrIndexWild( data, wildcard, start )
+				;Message("case",'%start% --- Case 2 %startcase2%')
+				If pcount < 1
+					wildcard = '<li>*</li>'
+					startcase3 = StrIndexWild( data, wildcard, start )
+				Else
+					startcase3 = 0
+				EndIf
+
+				if startcase1 > start
+					result = StrSubWild( data, wildcard, startcase1 )
+					start = startcase1
+				elseif startcase2 > start
+					result = StrSubWild( data, wildcard, startcase2 )
+					start = startcase2
+				elseif startcase3 > start && pcount < 1
+					result = StrReplace(StrSubWild( data, wildcard, startcase3 ),"<em>","")
+					start = startcase3
+				endif
+				topictitle = StrReplace(StrReplace(StrReplace(StrReplace(StrReplace(StrReplace(StrReplace(StrReplace(StrReplace(StrReplace(StrReplace(result,'<p><span class="program_title">',''),'<p><strong class="program_title">',""),': ','<em>'),'"','""'),"</span>","</em>"),"</strong",""),"<li>",""),"</li>",""),"&nbsp;"," "),"<br />",""),"<br/>","")
+
+				wildcard = '<em>*</em>'
+ 				emstart = StrIndexWild( topictitle, wildcard, 1 )
+ 				result = StrSubWild( topictitle, wildcard, emstart )
+ 				topictitle = StrReplace(StrReplace(StrReplace( topictitle, result, "" ),"</em>",""),":","")
+ 				emphasis =StrReplace(StrReplace(StrReplace(result,'<em>',''),'</em>',''),'"','""')
+
+				;grabs the topics copy
+				wildcard = '</span><br />*<p>-----</p>'
+				start2 = StrIndexWild( data, wildcard, start )
+				result = StrSubWild( data, wildcard, start2 )
+				If result == ""
+					wildcard = '</span> <br />*<p>-----</p>'
+					start3 = StrIndexWild( data, wildcard, start )
+					result = StrSubWild( data, wildcard, start3 )
+				Endif
+				If result == ""
+					wildcard = '</span><br />*<p>&nbsp;</p>'
+					start4 = StrIndexWild( data, wildcard, start )
+					result = StrSubWild( data, wildcard, start4 )
+				Endif
+				If result == ""
+					wildcard = '</span> <br />*<p>&nbsp;</p>'
+					start5 = StrIndexWild( data, wildcard, start )
+					result = StrSubWild( data, wildcard, start5 )
+				Endif
+				If result == ""
+					wildcard = '</span><br />*<p><span class="program_title">'
+					start6 = StrIndexWild( data, wildcard, start )
+					result = StrSubWild( data, wildcard, start6 )
+				Endif
+				If result == ""
+					wildcard = '</span> <br />*<p><span class="program_title">'
+					start7 = StrIndexWild( data, wildcard, start )
+					result = StrSubWild( data, wildcard, start7 )
+				Endif
+				If result == ""
+					wildcard = '</span><br />*</div>'
+					start8 = StrIndexWild( data, wildcard, start )
+					result = StrSubWild( data, wildcard, start8 )
+				Endif
+				If result == ""
+					wildcard = '</span> <br />*</div>'
+					start9 = StrIndexWild( data, wildcard, start )
+					result = StrSubWild( data, wildcard, start9 )
+				Endif
+				If result == ""
+					wildcard = '</span>*<p><span class="program_title">'
+					start10 = StrIndexWild( data, wildcard, start )
+					result = StrSubWild( data, wildcard, start10 )
+				Endif
+				If result == ""
+					wildcard = '</span>*</div>'
+					start11 = StrIndexWild( data, wildcard, start )
+					result = StrSubWild( data, wildcard, start11 )
+				Endif
+				topic = StrReplace(StrReplace(StrReplace(StrReplace(StrReplace(StrReplace(StrReplace(StrReplace(result,"</span><br />","<p>"),"</span> <br />","<p>"),"<p>&nbsp;</p>",""),"<p>-----</p>",""),'<p class="program_title">&nbsp;</p>',""),"&nbsp;"," "),"</div>",""),'<p><span class="program_title">',"")
+			   ;Message("Case","Case 2 %@crlf% %topictitle% %@crlf% %@crlf% %emphasis%")
+		  		break
+		  Case 3
+		  		;Message("Topic","Case 3")
+		  		break
+		  EndSwitch
+
+		;Inserts content into excel spreadsheet then sets row height to 15
+		Cells1=objXL.Cells(line, 1)
+		Cells1.Value= StrCat(filename)
+		Cells1=objXL.Cells(line, 2)
+		Cells1.Value= StrCat(name)
+		Cells1=objXL.Cells(line, 3)
+		Cells1.Value=StrCat(name,": ",topictitle)
+		Cells1=objXL.Cells(line, 4)
+		Cells1.Value= StrCat(topictitle)
+		Cells1=objXL.Cells(line, 5)
+		Cells1.Value= StrCat(emphasis)
+		Cells1=objXL.Cells(line, 6)
+		Cells1.Value= StrCat(topic)
+		Cells1=objXL.Cells(line, 7)
+		Cells1.Value= StrCat(showncase)
+		Rows1=objXL.Rows("%line%:%line%")
+		Rows1.RowHeight = 15
+
+		tcount=tcount+1
+		start=start+1
+		;Message("topic end","end topic")
+		;Message("Topic","%name%%@crlf%%topictitle%%@crlf%%emphasis%")
+	endwhile
+	pcount = 1
+	row=line
+	count=count+1
+	;Message("File End","Row Number%@crlf%%@crlf%<--  %row%  -->")
+endwhile
+
+Message("Function End","Fin")
